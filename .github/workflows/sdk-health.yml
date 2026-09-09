@@ -78,7 +78,7 @@ jobs:
       - name: Run billed acceptance probes
         run: |
           set -o pipefail
-          cargo test --locked --test live -- --ignored --nocapture 2>&1 | tee rust-live.txt
+          for attempt in 1 2 3; do cargo test --locked --test live -- --ignored --nocapture 2>&1 | tee -a rust-live.txt && exit 0; test "$attempt" -eq 3 || sleep "$((attempt * 5))"; done; exit 1
 
       - name: Upload result
         if: ${{ always() }}
