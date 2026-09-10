@@ -56,7 +56,7 @@ Check:
 
 ## 4. Validate Package Manifest
 
-Verify `Package.swift` syntax, target definitions, and platforms (macOS 13+, iOS 16+).
+Verify `Package.swift` syntax, target definitions, and platforms (macOS 12+, iOS/tvOS 15+, watchOS 8+, visionOS 1+).
 
 ---
 

@@ -8,9 +8,11 @@ final class LiveTests: XCTestCase {
         }
         let baseURL = ProcessInfo.processInfo.environment["NROUTER_BASE_URL"]
             ?? NRouter.defaultBaseURL
+        let model = ProcessInfo.processInfo.environment["NROUTER_LIVE_MESSAGES_MODEL"]
+            ?? "claude-haiku-4-5-20251001"
         let client = try NRouter(baseURL: baseURL)
         let response = try await client.messagesStream([
-            "model": "claude-haiku-4-5-20251001",
+            "model": model,
             "max_tokens": 2,
             "messages": [["role": "user", "content": "Reply OK"]],
         ])

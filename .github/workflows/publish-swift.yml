@@ -45,6 +45,12 @@ on:
       - 'examples/**'
       - '.github/workflows/publish-swift.yml'
   workflow_dispatch:
+    inputs:
+      live:
+        description: Run the billed Swift Messages streaming canary
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -71,6 +77,16 @@ jobs:
 
       - name: Run cross-SDK conformance check
         run: python3 conformance/check_conformance.py
+
+      - name: Run billed Swift Messages streaming canary
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.live }}
+        working-directory: sdks/swift
+        env:
+          NROUTER_LIVE: '1'
+          NROUTER_API_KEY: ${{ secrets.NROUTER_SDK_MONITOR_API_KEY }}
+          NROUTER_BASE_URL: https://api.nrouter.ai/v1
+          NROUTER_LIVE_MESSAGES_MODEL: claude-haiku-4-5-20251001
+        run: swift test --filter LiveTests/testLiveClaudeStream
 
       - name: Validate Swift Package Index Compatibility (Release Template)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
