@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       live:
-        description: Run one billed gateway canary for every SDK
+        description: Run billed SDK plus text, image, audio, and video endpoint canaries
         required: false
         default: false
         type: boolean
@@ -46,6 +46,7 @@ jobs:
           python conformance/check_conformance.py --self-test
           python conformance/check_conformance.py
           python scripts/check_sdk_parity.py
+          python scripts/check_live_endpoints.py --self-test
           python -m pytest -q tests/test_sdk_contract.py tests/test_release_versions.py tests/test_tag_publish_gated.py
 
       - name: Record result
@@ -301,10 +302,46 @@ jobs:
           name: sentinel-status-swift
           path: sentinel-swift.csv
 
+  endpoints:
+    name: Live endpoint matrix
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.live }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.13'
+
+      - name: Install Python SDK
+        run: python -m pip install -e sdks/python
+
+      - name: Probe every live endpoint
+        env:
+          NROUTER_API_KEY: ${{ secrets.NROUTER_SDK_MONITOR_API_KEY }}
+          NROUTER_LIVE_CHAT_MODEL: ${{ vars.NROUTER_LIVE_CHAT_MODEL }}
+          NROUTER_LIVE_RESPONSES_MODEL: ${{ vars.NROUTER_LIVE_RESPONSES_MODEL }}
+          NROUTER_LIVE_EMBEDDINGS_MODEL: ${{ vars.NROUTER_LIVE_EMBEDDINGS_MODEL }}
+          NROUTER_LIVE_IMAGE_MODEL: ${{ vars.NROUTER_LIVE_IMAGE_MODEL }}
+          NROUTER_LIVE_SPEECH_MODEL: ${{ vars.NROUTER_LIVE_SPEECH_MODEL }}
+          NROUTER_LIVE_TRANSCRIPTION_MODEL: ${{ vars.NROUTER_LIVE_TRANSCRIPTION_MODEL }}
+          NROUTER_LIVE_TRANSLATION_MODEL: ${{ vars.NROUTER_LIVE_TRANSLATION_MODEL }}
+          NROUTER_LIVE_VIDEO_MODEL: ${{ vars.NROUTER_LIVE_VIDEO_MODEL }}
+        run: python scripts/check_live_endpoints.py
+
+      - name: Upload endpoint report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sdk-sentinel-endpoints
+          path: sdk-sentinel-endpoints.csv
+          if-no-files-found: warn
+
   report:
     name: Combined SDK report
     if: ${{ always() }}
-    needs: [conformance, sdk, swift]
+    needs: [conformance, sdk, swift, endpoints]
     runs-on: ubuntu-latest
     steps:
       - name: Download SDK results
@@ -313,6 +350,13 @@ jobs:
           pattern: sentinel-status-*
           path: sentinel-results
           merge-multiple: true
+
+      - name: Download endpoint results
+        if: ${{ needs.endpoints.result != 'skipped' }}
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: sdk-sentinel-endpoints
+          path: endpoint-results
 
       - name: Build CSV and job summary
         run: |
@@ -337,6 +381,17 @@ jobs:
               summary.write('| SDK | Result | Live canary |\n| --- | --- | --- |\n')
               for row in rows:
                   summary.write(f"| {row['sdk']} | {row['status']} | {row['live_mode']} |\n")
+              endpoint_reports = glob.glob('endpoint-results/*.csv')
+              if endpoint_reports:
+                  with open(endpoint_reports[0], newline='', encoding='utf-8') as handle:
+                      endpoints = list(csv.DictReader(handle))
+                  summary.write('\n## Live endpoints\n\n')
+                  summary.write('| Method | Endpoint | Model | Result |\n| --- | --- | --- | --- |\n')
+                  for endpoint in endpoints:
+                      summary.write(
+                          f"| {endpoint['method']} | {endpoint['endpoint']} | "
+                          f"{endpoint['model'] or '—'} | {endpoint['status']} |\n"
+                      )
           PY
 
       - name: Upload combined report
@@ -346,5 +401,5 @@ jobs:
           path: sdk-sentinel-report.csv
 
       - name: Fail when any SDK failed
-        if: ${{ needs.conformance.result != 'success' || needs.sdk.result != 'success' || needs.swift.result != 'success' }}
+        if: ${{ needs.conformance.result != 'success' || needs.sdk.result != 'success' || needs.swift.result != 'success' || (needs.endpoints.result != 'success' && needs.endpoints.result != 'skipped') }}
         run: exit 1
