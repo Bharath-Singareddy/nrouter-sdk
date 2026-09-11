@@ -304,7 +304,7 @@ jobs:
 
   endpoints:
     name: Live endpoint matrix
-    if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.live == 'true' }}
+    if: ${{ github.event_name == 'schedule' || github.event.inputs.live == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
